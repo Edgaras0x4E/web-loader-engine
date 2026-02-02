@@ -1,0 +1,46 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI Tools
+.claude/
+.cursor/
+.cursorignore
+.cursorrules
+.aider*
+.copilot/
+.codeium/
+.windsurf/
+.tabnine/
+.continue/
+.cody/
+.supermaven/
+.bolt/
+.v0/
+CLAUDE.md
+
+# Environment
+.env
+.env.local
+
+# Models (large files)
+/models/*.gguf
+/models/*.bin
+
+# Screenshots
+/screenshots/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+docker-compose.yml

@@ -1,0 +1,78 @@
+[package]
+name = "web-loader-engine"
+version = "0.1.0"
+edition = "2021"
+authors = ["Web Loader Engine"]
+description = "High-performance web content fetching engine for OpenWebUI"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7", features = ["macros"] }
+tower = { version = "0.4", features = ["util", "timeout"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
+
+# Headless browser
+chromiumoxide = { version = "0.8", features = ["tokio-runtime"], default-features = false }
+futures = "0.3"
+
+# HTML parsing and manipulation
+scraper = "0.18"
+html5ever = "0.27"
+markup5ever_rcdom = "0.3"
+
+# HTML to Markdown
+html2md = "0.2"
+
+# Content extraction (Mozilla Readability)
+readability = "0.3"
+
+# HTTP client
+reqwest = { version = "0.11", features = ["json", "cookies", "socks"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Configuration
+config = "0.14"
+dotenvy = "0.15"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utilities
+thiserror = "1.0"
+anyhow = "1.0"
+url = { version = "2.5", features = ["serde"] }
+regex = "1.10"
+lazy_static = "1.4"
+parking_lot = "0.12"
+dashmap = "5.5"
+uuid = { version = "1.6", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+base64 = "0.21"
+bytes = "1.5"
+mime_guess = "2.0"
+tempfile = "3.9"
+
+# Async utilities
+async-trait = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

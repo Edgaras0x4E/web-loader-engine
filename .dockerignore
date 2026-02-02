@@ -1,0 +1,66 @@
+# Build artifacts
+target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AI Tools
+.claude/
+.cursor/
+.cursorignore
+.cursorrules
+.aider*
+.copilot/
+.codeium/
+.windsurf/
+.tabnine/
+.continue/
+.cody/
+.supermaven/
+.bolt/
+.v0/
+CLAUDE.md
+
+# Environment (secrets)
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+LICENSE
+
+# Models (large files)
+models/
+
+# Screenshots
+screenshots/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Tests (if not needed in image)
+tests/
+
+docker-compose.yml
