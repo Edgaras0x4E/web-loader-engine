@@ -5,7 +5,7 @@ use axum::{
 };
 use futures::future::join_all;
 use std::time::Instant;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::AppError;
 use crate::models::{
@@ -13,8 +13,10 @@ use crate::models::{
     LoadRequest, LoadResponse, OpenWebUIDocument, OpenWebUIMetadata,
     OpenWebUIRequest, ResponseFormat, ResponseMetadata,
 };
-use crate::services::SecurityService;
+use crate::services::{BrowserPool, SecurityService};
 use crate::AppState;
+
+const MAX_REQUEST_RETRIES: u32 = 2;
 
 #[axum::debug_handler]
 pub async fn load_handler(
@@ -42,7 +44,7 @@ pub async fn load_handler(
         }
     }
 
-    let response = process_url(&state, &options).await?;
+    let response = process_url_with_retry(&state, &options).await?;
 
     state.security.record_success(&domain);
 
@@ -89,7 +91,7 @@ pub async fn batch_load_handler(
 
             match parse_options(&headers, &url, &load_request.options) {
                 Ok(opts) => {
-                    match process_url(&state, &opts).await {
+                    match process_url_with_retry(&state, &opts).await {
                         Ok(response) => BatchLoadResult {
                             url,
                             response: Some(response),
@@ -119,6 +121,45 @@ pub async fn batch_load_handler(
     Ok(Json(BatchLoadResponse {
         results,
         total_processing_time_ms: total_time,
+    }))
+}
+
+async fn process_url_with_retry(
+    state: &AppState,
+    options: &CrawlerOptions,
+) -> Result<LoadResponse, AppError> {
+    let mut last_error = None;
+
+    for attempt in 0..=MAX_REQUEST_RETRIES {
+        if attempt > 0 {
+            warn!(
+                "Retrying request for {} (attempt {}/{})",
+                options.url,
+                attempt + 1,
+                MAX_REQUEST_RETRIES + 1
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        match process_url(state, options).await {
+            Ok(response) => return Ok(response),
+            Err(e) => {
+                if BrowserPool::is_connection_error(&e) {
+                    warn!(
+                        "Connection error processing {}: {}, will retry",
+                        options.url, e
+                    );
+                    state.browser_pool.invalidate_browser().await;
+                    last_error = Some(e);
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        AppError::BrowserError("Failed to process URL after max retries".to_string())
     }))
 }
 
@@ -208,7 +249,7 @@ pub async fn openwebui_handler(
 
             match parse_options(&headers, &url, &load_request.options) {
                 Ok(opts) => {
-                    match process_url(&state, &opts).await {
+                    match process_url_with_retry(&state, &opts).await {
                         Ok(response) => Some(OpenWebUIDocument {
                             page_content: response.content,
                             metadata: OpenWebUIMetadata {

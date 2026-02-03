@@ -1,6 +1,6 @@
 [package]
 name = "web-loader-engine"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Web Loader Engine"]
 description = "High-performance web content fetching engine for OpenWebUI"

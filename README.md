@@ -226,6 +226,34 @@ While built for OpenWebUI, this works for:
 - **Screenshot Services** - Programmatic page captures
 - **Search Indexing** - Extract text content for indexing
 
+## Changelog
+
+### v0.1.1
+
+**Browser Pool Resilience** - Fixed critical issue where dead browser connections would cause requests to hang indefinitely.
+
+- Added automatic browser health detection with 5-second timeout on page creation
+- Implemented connection error detection for `Ws(AlreadyClosed)` and related WebSocket errors
+- Auto-recovery: dead browsers are now automatically recreated on connection failure
+- Request-level retry logic (up to 3 retries) for transient connection errors
+- Health endpoint now exposes `healthy` status and `recreation_count` for monitoring
+
+Health response now includes:
+```json
+{
+  "status": "ok",
+  "version": "0.1.1",
+  "browser_pool": {
+    "available": 10,
+    "total": 10,
+    "healthy": true,
+    "recreation_count": 1
+  }
+}
+```
+
+Monitor `recreation_count` increasing to track browser recovery events.
+
 ## License
 
 MIT

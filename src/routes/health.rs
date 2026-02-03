@@ -8,6 +8,8 @@ pub async fn health_handler(
     let browser_status = BrowserPoolStatus {
         available: state.browser_pool.available_slots(),
         total: state.browser_pool.total_slots(),
+        healthy: state.browser_pool.is_healthy(),
+        recreation_count: state.browser_pool.recreation_count(),
     };
 
     Json(HealthResponse {

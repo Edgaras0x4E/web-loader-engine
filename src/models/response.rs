@@ -66,6 +66,8 @@ pub struct HealthResponse {
 pub struct BrowserPoolStatus {
     pub available: usize,
     pub total: usize,
+    pub healthy: bool,
+    pub recreation_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
