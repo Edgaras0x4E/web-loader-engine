@@ -15,6 +15,7 @@ use std::sync::Arc;
 use tokio::signal;
 use tower_http::{
     cors::{Any, CorsLayer},
+    services::ServeDir,
     trace::TraceLayer,
 };
 use tracing::info;
@@ -88,6 +89,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/load", post(load_handler))
         .route("/load/batch", post(batch_load_handler))
         .route("/", post(openwebui_handler))
+        .nest_service("/screenshots", ServeDir::new(&config.screenshot_dir))
         .with_state(state)
         .layer(axum_middleware::from_fn(auth_middleware))
         .layer(Extension(auth_layer))

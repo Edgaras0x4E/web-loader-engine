@@ -216,6 +216,79 @@ GET /health
 }
 ```
 
+## Screenshots
+
+Set `x-respond-with` to either `screenshot` (viewport only) or `pageshot` (full scrolling page). The API renders the page in headless Chromium, saves the PNG to `SCREENSHOT_DIR`, and returns a relative URL you can fetch from the same server.
+
+### Viewport screenshot
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Content-Type: application/json" \
+  -H "x-respond-with: screenshot" \
+  -d '{"url": "https://example.com"}'
+```
+
+Response:
+
+```json
+{
+  "url": "https://example.com",
+  "title": null,
+  "content": "",
+  "screenshot_url": "/screenshots/httpsexamplecom_441d3714-d010-4eb4-a729-606873b081d9.png",
+  "metadata": {"processing_time_ms": 1064, "cached": false}
+}
+```
+
+Fetch the PNG:
+
+```bash
+curl -o page.png \
+  http://localhost:14786/screenshots/httpsexamplecom_441d3714-d010-4eb4-a729-606873b081d9.png
+```
+
+### Full-page screenshot
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Content-Type: application/json" \
+  -H "x-respond-with: pageshot" \
+  -d '{"url": "https://example.com"}'
+```
+
+### Wait for content before capturing
+
+Combine with `x-wait-for-selector` so the screenshot is only taken once a specific element has rendered:
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Content-Type: application/json" \
+  -H "x-respond-with: screenshot" \
+  -H "x-wait-for-selector: article h1" \
+  -d '{"url": "https://example.com/post/123"}'
+```
+
+### With API key
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Authorization: Bearer your-secret-key" \
+  -H "Content-Type: application/json" \
+  -H "x-respond-with: screenshot" \
+  -d '{"url": "https://example.com"}'
+
+curl -H "Authorization: Bearer your-secret-key" \
+  -o page.png \
+  http://localhost:14786/screenshots/httpsexamplecom_441d3714-d010-4eb4-a729-606873b081d9.png
+```
+
+### Storage
+
+- Files are written to `SCREENSHOT_DIR` (default `/app/screenshots` in Docker, configurable via env)
+- Filenames include a UUID to avoid collisions
+- When using Docker, mount a volume at `/app/screenshots` to persist captures across container restarts
+
 ## Other Use Cases
 
 While built for OpenWebUI, this works for:
@@ -227,6 +300,15 @@ While built for OpenWebUI, this works for:
 - **Search Indexing** - Extract text content for indexing
 
 ## Changelog
+
+### v0.1.2
+
+**Screenshot Delivery Fix** - Screenshot URLs returned by the API are now actually reachable.
+
+- Fixed issue where `/load` responses advertised a `screenshot_url` that returned 404 when fetched
+- Saved screenshots are now served directly from the configured `SCREENSHOT_DIR`
+- Safe by design: path-traversal attempts (e.g. `/screenshots/../etc/passwd`) return 404
+- Respects the same API key authentication as the rest of the API when one is configured
 
 ### v0.1.1
 

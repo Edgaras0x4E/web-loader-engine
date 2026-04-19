@@ -188,6 +188,7 @@ async fn process_screenshot(
     state: &AppState,
     options: &CrawlerOptions,
 ) -> Result<LoadResponse, AppError> {
+    let start = Instant::now();
     let full_page = matches!(options.respond_with, ResponseFormat::Pageshot);
 
     let page = state.browser_pool.get_page(options).await?;
@@ -215,7 +216,7 @@ async fn process_screenshot(
         links: None,
         screenshot_url: Some(screenshot_url),
         metadata: ResponseMetadata {
-            processing_time_ms: 0,
+            processing_time_ms: start.elapsed().as_millis() as u64,
             cached: false,
         },
     })
