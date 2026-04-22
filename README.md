@@ -12,6 +12,7 @@ High-performance web content extraction engine built in Rust. Primary purpose is
 - **Rate Limiting** - Per-domain rate limiting and circuit breakers
 - **Batch Processing** - Process multiple URLs concurrently
 - **Security** - SSRF protection, blocked internal IPs, optional API key auth
+- **Egress Proxy Support** - Honors `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` for both HTTP client and Chromium browser traffic
 
 ## Quick Start
 
@@ -101,6 +102,8 @@ Environment variables:
 | `REQUEST_TIMEOUT` | `30` | Default timeout in seconds |
 | `CACHE_TTL` | `3600` | Cache lifetime in seconds |
 | `SCREENSHOT_DIR` | `/app/screenshots` | Screenshot storage path |
+| `HTTPS_PROXY` / `HTTP_PROXY` | - | Egress proxy URL (e.g. `http://proxy:3128`). When set, routes both HTTP client and Chromium traffic through the proxy |
+| `NO_PROXY` | - | Comma-separated list of hosts/domains to bypass the proxy (e.g. `localhost,127.0.0.1,*.internal.example.com`) |
 
 ## API
 
@@ -301,6 +304,15 @@ While built for OpenWebUI, this works for:
 
 ## Changelog
 
+### v0.1.3
+
+**Chromium Egress Proxy Support** - Chromium now honors `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` from the environment so the browser's outbound traffic can be routed through an egress proxy.
+
+- On launch, if `HTTPS_PROXY` (or `HTTP_PROXY` as fallback) is set, Chromium is started with `--proxy-server=<url>`
+- If `NO_PROXY` is set, its value is translated to Chrome's bypass-list syntax and passed via `--proxy-bypass-list=<list>` (commas → semicolons, `*.domain` → `.domain`)
+- When no proxy env vars are set, behavior is unchanged — dev/local runs need no configuration
+- The Rust HTTP client (reqwest) already honors these vars natively, so direct HTTP fetches and browser fetches now share the same egress path
+
 ### v0.1.2
 
 **Screenshot Delivery Fix** - Screenshot URLs returned by the API are now actually reachable.
@@ -324,7 +336,7 @@ Health response now includes:
 ```json
 {
   "status": "ok",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "browser_pool": {
     "available": 10,
     "total": 10,

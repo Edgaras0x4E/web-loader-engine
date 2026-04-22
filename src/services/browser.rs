@@ -43,7 +43,7 @@ impl BrowserPool {
     }
 
     async fn create_browser(config: &Config) -> Result<Browser> {
-        let browser_config = BrowserConfig::builder()
+        let mut builder = BrowserConfig::builder()
             .chrome_executable(&config.chrome_path)
             .no_sandbox()
             .arg("--disable-gpu")
@@ -64,7 +64,31 @@ impl BrowserPool {
             .arg("--disable-features=IsolateOrigins,site-per-process")
             .arg("--disable-blink-features=AutomationControlled")
             .arg("--disable-web-security")
-            .window_size(1920, 1080)
+            .window_size(1920, 1080);
+
+        if let Some(proxy) = std::env::var("HTTPS_PROXY")
+            .ok()
+            .or_else(|| std::env::var("HTTP_PROXY").ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+        {
+            info!("Configuring Chromium proxy-server: {}", proxy);
+            builder = builder.arg(format!("--proxy-server={}", proxy));
+
+            if let Some(no_proxy) = std::env::var("NO_PROXY")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+            {
+                let bypass = Self::no_proxy_to_chrome_bypass(&no_proxy);
+                if !bypass.is_empty() {
+                    info!("Configuring Chromium proxy-bypass-list: {}", bypass);
+                    builder = builder.arg(format!("--proxy-bypass-list={}", bypass));
+                }
+            }
+        }
+
+        let browser_config = builder
             .build()
             .map_err(|e| AppError::BrowserError(e.to_string()))?;
 
@@ -398,6 +422,22 @@ impl BrowserPool {
         })
     }
 
+    fn no_proxy_to_chrome_bypass(no_proxy: &str) -> String {
+        no_proxy
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                if let Some(rest) = s.strip_prefix("*.") {
+                    format!(".{}", rest)
+                } else {
+                    s.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(";")
+    }
+
     fn parse_cookies(cookies_str: &str, url: &str) -> Vec<CookieParam> {
         let domain = url::Url::parse(url)
             .ok()
@@ -464,5 +504,32 @@ mod tests {
 
         let err = AppError::ScrapingError("parsing failed".to_string());
         assert!(!BrowserPool::is_connection_error(&err));
+    }
+
+    #[test]
+    fn test_no_proxy_to_chrome_bypass() {
+        assert_eq!(
+            BrowserPool::no_proxy_to_chrome_bypass("*.vault.azure.net"),
+            ".vault.azure.net"
+        );
+        assert_eq!(
+            BrowserPool::no_proxy_to_chrome_bypass(
+                "localhost,127.0.0.1,*.vault.azure.net,*.internal.example.com"
+            ),
+            "localhost;127.0.0.1;.vault.azure.net;.internal.example.com"
+        );
+        assert_eq!(
+            BrowserPool::no_proxy_to_chrome_bypass(" localhost , 127.0.0.1 , *.foo.com "),
+            "localhost;127.0.0.1;.foo.com"
+        );
+        assert_eq!(
+            BrowserPool::no_proxy_to_chrome_bypass("localhost,,127.0.0.1"),
+            "localhost;127.0.0.1"
+        );
+        assert_eq!(BrowserPool::no_proxy_to_chrome_bypass(""), "");
+        assert_eq!(
+            BrowserPool::no_proxy_to_chrome_bypass("10.0.0.0/8"),
+            "10.0.0.0/8"
+        );
     }
 }
