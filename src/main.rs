@@ -40,12 +40,18 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let browser_log_level = std::env::var("BROWSER_LOG_LEVEL")
+        .unwrap_or_else(|_| "error".to_string());
+    let base_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,tower_http=debug"));
+    let filter = match format!("chromiumoxide={}", browser_log_level).parse() {
+        Ok(directive) => base_filter.add_directive(directive),
+        Err(_) => base_filter,
+    };
+
     tracing_subscriber::registry()
         .with(fmt::layer())
-        .with(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,tower_http=debug")),
-        )
+        .with(filter)
         .init();
 
     info!("Starting Web Loader Engine v{}", env!("CARGO_PKG_VERSION"));

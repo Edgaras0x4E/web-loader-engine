@@ -31,6 +31,15 @@ pub struct Config {
 
     #[serde(default = "default_screenshot_dir")]
     pub screenshot_dir: PathBuf,
+
+    #[serde(default = "default_user_agent")]
+    pub default_user_agent: String,
+
+    #[serde(default)]
+    pub user_agent_pool: Vec<String>,
+
+    #[serde(default = "default_user_agent_rotation")]
+    pub user_agent_rotation: String,
 }
 
 fn default_api_port() -> u16 { 14786 }
@@ -42,6 +51,36 @@ fn default_cache_ttl() -> u64 { 3600 }
 fn default_max_requests_per_page() -> usize { 2000 }
 fn default_max_domains_per_page() -> usize { 200 }
 fn default_screenshot_dir() -> PathBuf { PathBuf::from("/app/screenshots") }
+fn default_user_agent() -> String {
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".to_string()
+}
+fn default_user_agent_rotation() -> String { "off".to_string() }
+
+fn load_user_agent_pool() -> Vec<String> {
+    let from_file = std::env::var("USER_AGENT_POOL_FILE")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .and_then(|path| std::fs::read_to_string(&path).ok());
+
+    let raw = from_file.or_else(|| {
+        std::env::var("USER_AGENT_POOL")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    });
+
+    raw.map(|text| parse_user_agent_pool(&text))
+        .unwrap_or_default()
+}
+
+fn parse_user_agent_pool(text: &str) -> Vec<String> {
+    text.split(|c| c == '\n' || c == '|')
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_string)
+        .collect()
+}
 
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
@@ -82,6 +121,17 @@ impl Config {
             screenshot_dir: std::env::var("SCREENSHOT_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| default_screenshot_dir()),
+            default_user_agent: std::env::var("DEFAULT_USER_AGENT")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(default_user_agent),
+            user_agent_pool: load_user_agent_pool(),
+            user_agent_rotation: std::env::var("USER_AGENT_ROTATION")
+                .ok()
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(default_user_agent_rotation),
         };
 
         Ok(config)
@@ -101,6 +151,58 @@ impl Default for Config {
             max_requests_per_page: default_max_requests_per_page(),
             max_domains_per_page: default_max_domains_per_page(),
             screenshot_dir: default_screenshot_dir(),
+            default_user_agent: default_user_agent(),
+            user_agent_pool: Vec::new(),
+            user_agent_rotation: default_user_agent_rotation(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_user_agent_pool;
+
+    #[test]
+    fn splits_on_pipe() {
+        let pool = parse_user_agent_pool("UA1|UA2|UA3");
+        assert_eq!(pool, vec!["UA1", "UA2", "UA3"]);
+    }
+
+    #[test]
+    fn splits_on_newline() {
+        let pool = parse_user_agent_pool("UA1\nUA2\nUA3");
+        assert_eq!(pool, vec!["UA1", "UA2", "UA3"]);
+    }
+
+    #[test]
+    fn splits_on_both_separators_mixed() {
+        let pool = parse_user_agent_pool("UA1|UA2\nUA3|UA4");
+        assert_eq!(pool, vec!["UA1", "UA2", "UA3", "UA4"]);
+    }
+
+    #[test]
+    fn skips_comment_lines() {
+        let pool = parse_user_agent_pool("UA1\n# comment\nUA2\n#another");
+        assert_eq!(pool, vec!["UA1", "UA2"]);
+    }
+
+    #[test]
+    fn skips_empty_lines_and_trims_whitespace() {
+        let pool = parse_user_agent_pool("  UA1  \n\n   \n  UA2\t\n");
+        assert_eq!(pool, vec!["UA1", "UA2"]);
+    }
+
+    #[test]
+    fn empty_input_returns_empty_pool() {
+        assert!(parse_user_agent_pool("").is_empty());
+        assert!(parse_user_agent_pool("   \n\n   ").is_empty());
+        assert!(parse_user_agent_pool("# only a comment").is_empty());
+    }
+
+    #[test]
+    fn preserves_user_agent_content_with_internal_spaces() {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0";
+        let pool = parse_user_agent_pool(ua);
+        assert_eq!(pool, vec![ua]);
     }
 }

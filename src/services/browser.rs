@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::error::{AppError, Result};
 use crate::models::CrawlerOptions;
+use crate::services::user_agent::UserAgentService;
 use chromiumoxide::browser::{Browser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::network::{CookieParam, SetCookiesParams};
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
@@ -24,10 +25,12 @@ pub struct BrowserPool {
     is_healthy: Arc<AtomicBool>,
     recreation_count: Arc<AtomicU64>,
     recreation_lock: Arc<Mutex<()>>,
+    user_agent: Arc<UserAgentService>,
 }
 
 impl BrowserPool {
     pub async fn new(config: Config) -> Result<Self> {
+        let user_agent = Arc::new(UserAgentService::new(&config));
         let pool = Self {
             browser: Arc::new(RwLock::new(None)),
             semaphore: Arc::new(Semaphore::new(config.browser_pool_size)),
@@ -35,6 +38,7 @@ impl BrowserPool {
             is_healthy: Arc::new(AtomicBool::new(false)),
             recreation_count: Arc::new(AtomicU64::new(0)),
             recreation_lock: Arc::new(Mutex::new(())),
+            user_agent,
         };
 
         pool.ensure_browser().await?;
@@ -252,12 +256,11 @@ impl BrowserPool {
 
         drop(browser_guard);
 
-        let user_agent = options.user_agent.as_deref().unwrap_or(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        );
+        let user_agent = self.user_agent.resolve(options.user_agent.as_deref());
+        debug!("Using user agent: {}", user_agent);
         tokio::time::timeout(
             Duration::from_millis(HEALTH_CHECK_TIMEOUT_MS),
-            page.set_user_agent(user_agent)
+            page.set_user_agent(&user_agent)
         )
         .await
         .map_err(|_| AppError::BrowserError("Timeout setting user agent - browser connection may be dead".to_string()))?

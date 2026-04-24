@@ -6,6 +6,7 @@ pub mod converter;
 pub mod screenshot;
 pub mod cache;
 pub mod security;
+pub mod user_agent;
 
 pub use browser::BrowserPool;
 pub use scraper::ScraperService;

@@ -102,6 +102,11 @@ Environment variables:
 | `REQUEST_TIMEOUT` | `30` | Default timeout in seconds |
 | `CACHE_TTL` | `3600` | Cache lifetime in seconds |
 | `SCREENSHOT_DIR` | `/app/screenshots` | Screenshot storage path |
+| `BROWSER_LOG_LEVEL` | `error` | Log level for the headless browser driver (chromiumoxide). Silences noisy CDP deserialization warnings by default. Accepts `off`, `error`, `warn`, `info`, `debug`, `trace` |
+| `DEFAULT_USER_AGENT` | Chrome 120 on Windows | User agent used when no override is provided and rotation is disabled |
+| `USER_AGENT_ROTATION` | `off` | Rotation strategy: `off`, `round_robin`, `random` |
+| `USER_AGENT_POOL` | - | Inline pool of UAs separated by `\|` or newlines |
+| `USER_AGENT_POOL_FILE` | - | Path to a file with one UA per line (lines starting with `#` are comments). Takes precedence over `USER_AGENT_POOL` |
 | `HTTPS_PROXY` / `HTTP_PROXY` | - | Egress proxy URL (e.g. `http://proxy:3128`). When set, routes both HTTP client and Chromium traffic through the proxy |
 | `NO_PROXY` | - | Comma-separated list of hosts/domains to bypass the proxy (e.g. `localhost,127.0.0.1,*.internal.example.com`) |
 
@@ -203,6 +208,7 @@ GET /health
 | `x-no-cache` | `true` | Bypass cache |
 | `x-with-images-summary` | `true` | Include images list |
 | `x-with-links-summary` | `true` | Include links list |
+| `x-user-agent` | UA string, `rotate`, `default` | Override the user agent for this request. `rotate` forces rotation from the pool even when `USER_AGENT_ROTATION=off`; `default` forces the configured default |
 | `Authorization` | `Bearer <key>` | API key (if configured) |
 
 ### Request Body Options (all optional)
@@ -292,6 +298,72 @@ curl -H "Authorization: Bearer your-secret-key" \
 - Filenames include a UUID to avoid collisions
 - When using Docker, mount a volume at `/app/screenshots` to persist captures across container restarts
 
+## User Agents
+
+Three ways to control which `User-Agent` is sent with a request:
+
+1. **Configured default** - set `DEFAULT_USER_AGENT` in the environment. Used when rotation is off and no header is provided.
+2. **Rotation pool** - set `USER_AGENT_ROTATION=round_robin` or `random` plus `USER_AGENT_POOL` (or `USER_AGENT_POOL_FILE`). The server picks a different UA per request.
+3. **Per-request override** - send `x-user-agent` on the individual call.
+
+Resolution order per request: explicit header > rotation (if enabled) > configured default.
+
+### Pool from an inline list
+
+Separate UAs with `|` or newlines:
+
+```bash
+USER_AGENT_ROTATION=round_robin
+USER_AGENT_POOL="Mozilla/5.0 ...Chrome/120...|Mozilla/5.0 ...Firefox/121..."
+```
+
+### Pool from a file
+
+One UA per line, `#` lines are comments. Takes precedence over `USER_AGENT_POOL` if both are set.
+
+```bash
+USER_AGENT_ROTATION=random
+USER_AGENT_POOL_FILE=/etc/web-loader/user-agents.txt
+```
+
+Sample `user-agents.txt`:
+
+```
+# Desktop Chrome
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
+
+# Desktop Firefox
+Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0
+```
+
+### Explicit UA per request
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Content-Type: application/json" \
+  -H "x-user-agent: MyBot/1.0 (+https://example.com/bot)" \
+  -d '{"url": "https://httpbin.org/user-agent"}'
+```
+
+### Force rotation on a single request (even when rotation is off globally)
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Content-Type: application/json" \
+  -H "x-user-agent: rotate" \
+  -d '{"url": "https://httpbin.org/user-agent"}'
+```
+
+### Force the configured default (bypass rotation for one request)
+
+```bash
+curl -X POST http://localhost:14786/load \
+  -H "Content-Type: application/json" \
+  -H "x-user-agent: default" \
+  -d '{"url": "https://httpbin.org/user-agent"}'
+```
+
 ## Other Use Cases
 
 While built for OpenWebUI, this works for:
@@ -304,13 +376,24 @@ While built for OpenWebUI, this works for:
 
 ## Changelog
 
+### v0.1.4
+
+**User Agent Rotation & Browser Log Control** - Added configurable user agents and a way to silence warnings.
+
+- New `USER_AGENT_ROTATION` env var with strategies `off` (default), `round_robin`, `random` - rotates per request
+- Provide the pool via `USER_AGENT_POOL` (inline, `|`- or newline-separated) or `USER_AGENT_POOL_FILE` (path to a file, one UA per line, `#` comments supported). The file takes precedence when both are set
+- `DEFAULT_USER_AGENT` overrides the hardcoded default used when rotation is off and no header is set
+- `x-user-agent` header now accepts special values: `rotate` forces rotation even when `USER_AGENT_ROTATION=off`, and `default` forces the configured default
+- Precedence: explicit header → rotation (if enabled) → configured default. Empty pool safely falls back to the default with a warning at startup
+- New `BROWSER_LOG_LEVEL` env var (default `error`) silences chromiumoxide's noisy `WS Invalid message` warnings emitted when Chromium sends CDP events the driver doesn't yet model. Accepts `off`, `error`, `warn`, `info`, `debug`, `trace` - operates independently of `RUST_LOG`
+
 ### v0.1.3
 
 **Chromium Egress Proxy Support** - Chromium now honors `HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` from the environment so the browser's outbound traffic can be routed through an egress proxy.
 
 - On launch, if `HTTPS_PROXY` (or `HTTP_PROXY` as fallback) is set, Chromium is started with `--proxy-server=<url>`
 - If `NO_PROXY` is set, its value is translated to Chrome's bypass-list syntax and passed via `--proxy-bypass-list=<list>` (commas → semicolons, `*.domain` → `.domain`)
-- When no proxy env vars are set, behavior is unchanged — dev/local runs need no configuration
+- When no proxy env vars are set, behavior is unchanged - dev/local runs need no configuration
 - The Rust HTTP client (reqwest) already honors these vars natively, so direct HTTP fetches and browser fetches now share the same egress path
 
 ### v0.1.2
@@ -336,7 +419,7 @@ Health response now includes:
 ```json
 {
   "status": "ok",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "browser_pool": {
     "available": 10,
     "total": 10,
